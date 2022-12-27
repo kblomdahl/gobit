@@ -1,6 +1,4 @@
-use crate::Point;
-
-use super::color::Color;
+use crate::{color::Color, Point};
 
 #[derive(Clone, Copy)]
 pub struct Vertex {
@@ -8,7 +6,6 @@ pub struct Vertex {
     color: Option<Color>,
     next_link: Point,
     head: Point,
-    mark: usize
 }
 
 impl Vertex {
@@ -18,7 +15,6 @@ impl Vertex {
             color: None,
             next_link: at,
             head: at,
-            mark: usize::MIN,
         }
     }
 
@@ -28,7 +24,6 @@ impl Vertex {
             color: None,
             next_link: Point::new(0, 0),
             head: Point::new(0, 0),
-            mark: usize::MIN,
         }
     }
 
@@ -62,13 +57,5 @@ impl Vertex {
 
     pub fn set_head(&mut self, head: Point) {
         self.head = head;
-    }
-
-    pub fn mark(&self) -> usize {
-        self.mark
-    }
-
-    pub fn set_mark(&mut self, mark: usize) {
-        self.mark = mark;
     }
 }

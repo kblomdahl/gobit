@@ -2,8 +2,7 @@ use crate::{Color, Point, array2d::Array2D, vertex::Vertex};
 use std::{ops::{Index, IndexMut}, iter};
 
 pub struct Goban {
-    buf: Array2D<Vertex>,
-    mark: usize,
+    buf: Array2D<Vertex>
 }
 
 impl Index<Point> for Goban {
@@ -24,7 +23,6 @@ impl Goban {
     pub fn new(width: usize, height: usize) -> Self {
         let mut goban = Self {
             buf: Array2D::new(width + 2, height + 2, Vertex::invalid()),
-            mark: 0,
         };
 
         for point in goban.iter() {
@@ -63,7 +61,7 @@ impl Goban {
         })
     }
 
-    pub fn has_exactly_n_liberties<const N: usize>(&self, at: Point) -> bool {
+    fn has_exactly_n_liberties<const N: usize>(&self, at: Point) -> bool {
         let mut curr = at;
         let mut liberties = [at; N];
         let mut n = 0;
@@ -91,7 +89,7 @@ impl Goban {
         n == N
     }
 
-    pub fn has_n_liberties<const N: usize>(&self, at: Point) -> bool {
+    fn has_n_liberties<const N: usize>(&self, at: Point) -> bool {
         let mut curr = at;
         let mut liberties = [at; N];
         let mut n = 0;
@@ -135,10 +133,8 @@ impl Goban {
 
     fn capture_at(&mut self, at: Point) {
         let mut curr = at;
-        let mark = self.mark;
 
         loop {
-            self[curr].set_mark(mark);
             self[curr].set_color(None);
 
             curr = self[curr].next_link();
@@ -151,19 +147,16 @@ impl Goban {
     fn connect_with(&mut self, at: Point, to: Point) {
         let a = self[at].head();
         let b = self[to].head();
-        let mark = self.mark;
 
-        if self[a].mark() == self[b].mark() {
+        if a == b {
             return
         }
 
         // move ownership of the entire cyclic list at `at` to `to`
         let mut curr = at;
-        self[b].set_mark(mark);
 
         loop {
             self[curr].set_head(b);
-            self[curr].set_mark(mark);
 
             curr = self[curr].next_link();
             if curr == at {
@@ -188,12 +181,9 @@ impl Goban {
 
     pub fn play(&mut self, at: Point, color: Color) {
         let opposite = color.opposite();
-        let mark = self.mark + 1;
 
-        self.mark += 1;
         self[at].set_color(Some(color));
         self[at].set_head(at);
-        self[at].set_mark(mark);
         self[at].set_next_link(at);
 
         for other in at.neighbours() {
@@ -203,8 +193,6 @@ impl Goban {
                 self.connect_with(at, other);
             }
         }
-
-
     }
 
     pub fn undo(&mut self) {
@@ -259,7 +247,10 @@ mod tests {
         goban.play(Point::new(1, 1), Color::Black);
         goban.play(Point::new(2, 1), Color::Black);
 
+        assert!(!goban.has_exactly_n_liberties::<1>(Point::new(1, 1)));
+        assert!(!goban.has_exactly_n_liberties::<2>(Point::new(1, 1)));
         assert!(goban.has_exactly_n_liberties::<3>(Point::new(1, 1)));
+        assert!(!goban.has_exactly_n_liberties::<4>(Point::new(1, 1)));
     }
 
     #[test]
