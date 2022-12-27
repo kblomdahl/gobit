@@ -8,7 +8,7 @@ pub struct Vertex {
     color: Option<Color>,
     next_link: Point,
     head: Point,
-    mark: usize,
+    mark: usize
 }
 
 impl Vertex {

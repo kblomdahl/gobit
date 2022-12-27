@@ -1,5 +1,5 @@
 use crate::{Color, Point, array2d::Array2D, vertex::Vertex};
-use std::{ops::{Index, IndexMut}, iter, collections::HashSet};
+use std::{ops::{Index, IndexMut}, iter};
 
 pub struct Goban {
     buf: Array2D<Vertex>,
@@ -63,14 +63,22 @@ impl Goban {
         })
     }
 
-    pub fn num_liberties(&self, at: Point) -> usize {
+    pub fn has_exactly_n_liberties<const N: usize>(&self, at: Point) -> bool {
         let mut curr = at;
-        let mut liberties = HashSet::new();
+        let mut liberties = [at; N];
+        let mut n = 0;
 
         loop {
             for other in curr.neighbours() {
                 if self[other].is_valid() && self[other].is_empty() {
-                    liberties.insert(other);
+                    if !liberties[0..n].contains(&other) {
+                        if n >= N {
+                            return false
+                        }
+
+                        liberties[n] = other;
+                        n += 1;
+                    }
                 }
             }
 
@@ -80,7 +88,35 @@ impl Goban {
             }
         }
 
-        liberties.len()
+        n == N
+    }
+
+    pub fn has_n_liberties<const N: usize>(&self, at: Point) -> bool {
+        let mut curr = at;
+        let mut liberties = [at; N];
+        let mut n = 0;
+
+        loop {
+            for other in curr.neighbours() {
+                if self[other].is_valid() && self[other].is_empty() {
+                    if !liberties[0..n].contains(&other) {
+                        liberties[n] = other;
+                        n += 1;
+
+                        if n >= N {
+                            return true
+                        }
+                    }
+                }
+            }
+
+            curr = self[curr].next_link();
+            if curr == at {
+                break
+            }
+        }
+
+        false
     }
 
     pub fn is_valid(&self, at: Point, color: Color) -> bool {
@@ -91,8 +127,8 @@ impl Goban {
                 self[other].is_valid()
                     && (
                         self[other].is_empty()
-                        || (self[other].color() == Some(color) && self.num_liberties(other) > 1)
-                        || (self[other].color() == Some(opposite) && self.num_liberties(other) == 1)
+                        || (self[other].color() == Some(color) && self.has_n_liberties::<2>(other))
+                        || (self[other].color() == Some(opposite) && self.has_exactly_n_liberties::<1>(other))
                     )
             })
     }
@@ -121,8 +157,19 @@ impl Goban {
             return
         }
 
-        self[a].set_mark(mark);
+        // move ownership of the entire cyclic list at `at` to `to`
+        let mut curr = at;
         self[b].set_mark(mark);
+
+        loop {
+            self[curr].set_head(b);
+            self[curr].set_mark(mark);
+
+            curr = self[curr].next_link();
+            if curr == at {
+                break
+            }
+        }
 
         // given the following two cyclic lists:
         //
@@ -150,12 +197,14 @@ impl Goban {
         self[at].set_next_link(at);
 
         for other in at.neighbours() {
-            if self[other].color() == Some(opposite) && self.num_liberties(other) == 1 {
+            if self[other].color() == Some(opposite) && self.has_exactly_n_liberties::<1>(other) {
                 self.capture_at(other);
             } else if self[other].color() == Some(color) {
                 self.connect_with(at, other);
             }
         }
+
+
     }
 
     pub fn undo(&mut self) {
@@ -205,11 +254,23 @@ mod tests {
     }
 
     #[test]
-    fn num_liberties_returns_liberties() {
+    fn has_exactly_n_liberties_returns_liberties() {
         let mut goban = Goban::new(9, 9);
         goban.play(Point::new(1, 1), Color::Black);
         goban.play(Point::new(2, 1), Color::Black);
 
-        assert_eq!(goban.num_liberties(Point::new(1, 1)), 3);
+        assert!(goban.has_exactly_n_liberties::<3>(Point::new(1, 1)));
+    }
+
+    #[test]
+    fn has_n_liberties_returns_liberties() {
+        let mut goban = Goban::new(9, 9);
+        goban.play(Point::new(1, 1), Color::Black);
+        goban.play(Point::new(2, 1), Color::Black);
+
+        assert!(goban.has_n_liberties::<1>(Point::new(1, 1)));
+        assert!(goban.has_n_liberties::<2>(Point::new(1, 1)));
+        assert!(goban.has_n_liberties::<3>(Point::new(1, 1)));
+        assert!(!goban.has_n_liberties::<4>(Point::new(1, 1)));
     }
 }
