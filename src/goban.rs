@@ -76,60 +76,17 @@ impl Goban {
         &self.blocks[self[at].block()]
     }
 
+    fn block_at_mut(&mut self, at: Point) -> &mut Block {
+        let block = self[at].block();
+        &mut self.blocks[block]
+    }
+
     fn has_exactly_n_liberties<const N: usize>(&self, at: Point) -> bool {
-        let mut curr = at;
-        let mut liberties = [at; N];
-        let mut n = 0;
-
-        loop {
-            for other in curr.neighbours() {
-                if self[other].is_valid() && self[other].is_empty() {
-                    if !liberties[0..n].contains(&other) {
-                        if n >= N {
-                            return false
-                        }
-
-                        liberties[n] = other;
-                        n += 1;
-                    }
-                }
-            }
-
-            curr = self[curr].next_link();
-            if curr == at {
-                break
-            }
-        }
-
-        n == N
+        self.block_at(at).num_liberties() == N
     }
 
     fn has_n_liberties<const N: usize>(&self, at: Point) -> bool {
-        let mut curr = at;
-        let mut liberties = [at; N];
-        let mut n = 0;
-
-        loop {
-            for other in curr.neighbours() {
-                if self[other].is_valid() && self[other].is_empty() {
-                    if !liberties[0..n].contains(&other) {
-                        liberties[n] = other;
-                        n += 1;
-
-                        if n >= N {
-                            return true
-                        }
-                    }
-                }
-            }
-
-            curr = self[curr].next_link();
-            if curr == at {
-                break
-            }
-        }
-
-        false
+        self.block_at(at).num_liberties() >= N
     }
 
     pub fn is_valid(&self, at: Point, color: Color) -> bool {
@@ -146,13 +103,36 @@ impl Goban {
             })
     }
 
+    fn capture_single_at(&mut self, at: Point) {
+        let opposite = self.block_at(at).color().opposite();
+        let mut visited = [usize::MAX; 4];
+        let mut n = 0;
+
+        for other in at.neighbours() {
+            if !self[other].is_valid() || self[other].is_empty() {
+                // pass
+            } else {
+                let block = self[other].block();
+
+                if self.block_at(other).color() == opposite && !visited[0..n].contains(&block) {
+                    visited[n] = block;
+                    n += 1;
+
+                    self.block_at_mut(other).inc_num_liberties();
+                }
+            }
+        }
+
+        self[at] = Vertex::empty(at);
+    }
+
     fn capture_at(&mut self, at: Point) {
         let mut curr = at;
         let block = self[curr].block();
 
         loop {
             let next_link = self[curr].next_link();
-            self[curr] = Vertex::empty(curr);
+            self.capture_single_at(curr);
 
             curr = next_link;
             if curr == at {
@@ -163,6 +143,54 @@ impl Goban {
         self.blocks.remove(block);
     }
 
+    fn is_liberty_of(&self, liberty: Point, block: usize) -> bool {
+        let head = self.blocks[block].head();
+        let mut curr = head;
+
+        loop {
+            for other in curr.neighbours() {
+                if other == liberty {
+                    return true;
+                }
+            }
+
+            curr = self[curr].next_link();
+            if curr == head {
+                break
+            }
+        }
+
+        false
+    }
+
+    fn connect_single_with(&mut self, at: Point, to_block: usize) {
+        self[at].set_block(to_block);
+
+        for other in at.neighbours() {
+            if self[other].is_empty() && self[other].is_valid() {
+                if !self.is_liberty_of(other, to_block) {
+                    self.blocks[to_block].inc_num_liberties();
+                }
+            }
+        }
+
+        // move `at` to just after the head of the `to_block` in the cyclic
+        // list of vertices:
+        //
+        // 1 -> 2 -> .. -> 1 (cyclic)
+        // a
+        //
+        // becomes
+        //
+        // 1 -> a -> 2 -> .. -> 1 (cyclic)
+        //
+        let to_head = self.blocks[to_block].head();
+        let to_head_next = self[to_head].next_link();
+
+        self[to_head].set_next_link(at);
+        self[at].set_next_link(to_head_next);
+    }
+
     fn connect_with(&mut self, at: Point, to: Point) {
         let a_block = self[at].block();
         let b_block = self[to].block();
@@ -171,50 +199,51 @@ impl Goban {
             return
         }
 
-        // move ownership of the entire list at `at` to `to`
         let mut curr = at;
 
         loop {
-            self[curr].set_block(b_block);
+            let next_link = self[curr].next_link();
+            self.connect_single_with(curr, b_block);
 
-            curr = self[curr].next_link();
+            curr = next_link;
             if curr == at {
                 break
             }
         }
 
-        // given the following two cyclic lists:
-        //
-        // 1 -> 2 -> .. -> 1 (cyclic)
-        // a -> b -> .. -> a (cyclic)
-        //
-        // becomes
-        //
-        // 1 -> b -> .. a -> 2 -> .. -> 1
-        //
-        let a = self.blocks[a_block].head();
-        let b = self.blocks[b_block].head();
-        let a_next = self[a].next_link();
-        let b_next = self[b].next_link();
-        self[a].set_next_link(b_next);
-        self[b].set_next_link(a_next);
-
-        // remove the `at` block which was connected to `to`
+        self.blocks[b_block].dec_num_liberties();
         self.blocks.remove(a_block);
     }
 
     pub fn play(&mut self, at: Point, color: Color) {
         let opposite = color.opposite();
-        let block = self.blocks.insert(Block::new(at, color));
+        let block = self.blocks.insert(
+            Block::new(
+                at,
+                color,
+                at.neighbours().filter(|&other| self[other].is_empty() && self[other].is_valid()).count(),
+            )
+        );
 
         self[at].set_block(block);
         self[at].set_next_link(at);
 
+        let mut visited = [usize::MAX; 4];
+        let mut n = 0;
+
         for other in at.neighbours() {
             if self[other].is_empty() || !self[other].is_valid() {
                 // pass
-            } else if self.block_at(other).color() == opposite && self.has_exactly_n_liberties::<1>(other) {
-                self.capture_at(other);
+            } else if self.block_at(other).color() == opposite {
+                let other_block = self[other].block();
+
+                if self.has_exactly_n_liberties::<1>(other) {
+                    self.capture_at(other);
+                } else if !visited[0..n].contains(&other_block) {
+                    visited[n] = other_block;
+                    n += 1;
+                    self.block_at_mut(other).dec_num_liberties();
+                }
             } else if self.block_at(other).color() == color {
                 self.connect_with(at, other);
             }
