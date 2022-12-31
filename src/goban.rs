@@ -101,10 +101,10 @@ impl Goban {
             if !self[other].is_valid() || self[other].is_empty() {
                 // pass
             } else {
-                let block = self[other].block();
+                let other_block = self[other].block();
 
-                if self.block_at(other).color() == opposite && !visited[0..n].contains(&block) {
-                    visited[n] = block;
+                if self.block_at(other).color() == opposite && !visited[0..n].contains(&other_block) {
+                    visited[n] = other_block;
                     n += 1;
 
                     self.block_at_mut(other).inc_num_liberties();
@@ -203,6 +203,8 @@ impl Goban {
     }
 
     pub fn play(&mut self, at: Point, color: Color) {
+        debug_assert!(self.is_valid(at, color));
+
         let opposite = color.opposite();
         let block = self.blocks.insert(
             Block::new(
@@ -222,12 +224,12 @@ impl Goban {
             if self[other].is_empty() || !self[other].is_valid() {
                 // pass
             } else if self.block_at(other).color() == opposite {
-                let block = self[other].block();
+                let other_block = self[other].block();
 
                 if self.block_at(other).num_liberties() == 1 {
                     self.capture_at(other);
-                } else if !visited[0..n].contains(&block) {
-                    visited[n] = block;
+                } else if !visited[0..n].contains(&other_block) {
+                    visited[n] = other_block;
                     n += 1;
                     self.block_at_mut(other).dec_num_liberties();
                 }
@@ -253,6 +255,9 @@ mod tests {
         assert_eq!(Goban::new(19, 19).iter().count(), 361);
     }
 
+    /// ```
+    /// x x
+    /// ```
     #[test]
     fn play_fills_vertices() {
         let mut goban = Goban::new(9, 9);
@@ -262,6 +267,10 @@ mod tests {
         assert_eq!(goban.iter().filter(|at| goban.at(*at) == Some(Color::Black)).count(), 2);
     }
 
+    /// ```
+    /// o x
+    /// x
+    /// ```
     #[test]
     fn play_clears_captured_vertices() {
         let mut goban = Goban::new(9, 9);
@@ -273,6 +282,9 @@ mod tests {
         assert_eq!(goban.iter().filter(|at| goban.at(*at) == Some(Color::White)).count(), 0);
     }
 
+    /// ```
+    /// x x
+    /// ```
     #[test]
     fn capture_at_clears_all_vertices() {
         let mut goban = Goban::new(9, 9);
@@ -283,6 +295,9 @@ mod tests {
         assert_eq!(goban.iter().filter(|at| goban.at(*at) == Some(Color::Black)).count(), 0);
     }
 
+    /// ```
+    /// x x
+    /// ```
     #[test]
     fn has_exactly_n_liberties() {
         let mut goban = Goban::new(9, 9);
@@ -290,5 +305,26 @@ mod tests {
         goban.play(Point::new(2, 1), Color::Black);
 
         assert_eq!(goban.block_at(Point::new(1, 1)).num_liberties(), 3);
+    }
+
+    /// ```
+    /// x x x
+    /// x   x
+    /// x o x
+    /// ```
+    #[test]
+    fn play_does_not_double_increase_liberties() {
+        let mut goban = Goban::new(9, 9);
+        goban.play(Point::new(1, 1), Color::White);
+        goban.play(Point::new(1, 2), Color::White);
+        goban.play(Point::new(1, 3), Color::White);
+        goban.play(Point::new(2, 3), Color::White);
+        goban.play(Point::new(3, 1), Color::White);
+        goban.play(Point::new(3, 2), Color::White);
+        goban.play(Point::new(3, 3), Color::White);
+        goban.play(Point::new(2, 1), Color::Black);
+
+        assert_eq!(goban.block_at(Point::new(3, 3)).num_liberties(), 7);
+        assert_eq!(goban.block_at(Point::new(2, 1)).num_liberties(), 1);
     }
 }
