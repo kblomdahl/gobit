@@ -13,3 +13,4 @@ harness = false
 criterion = "0.4"
 
 [dependencies]
+slab = "0.4"

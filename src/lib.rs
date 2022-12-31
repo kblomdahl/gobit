@@ -1,4 +1,5 @@
 mod array2d;
+mod block;
 mod color;
 mod goban;
 mod point;

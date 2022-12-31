@@ -1,46 +1,35 @@
-use crate::{color::Color, Point};
+use crate::Point;
 
 #[derive(Clone, Copy)]
 pub struct Vertex {
-    is_valid: bool,
-    color: Option<Color>,
     next_link: Point,
-    head: Point,
+    block: u16,
 }
 
 impl Vertex {
+    const EMPTY: u16 = u16::MAX - 1;
+    const INVALID: u16 = u16::MAX;
+
     pub fn empty(at: Point) -> Self {
         Self {
-            is_valid: true,
-            color: None,
             next_link: at,
-            head: at,
+            block: Self::EMPTY,
         }
     }
 
     pub fn invalid() -> Self {
         Self {
-            is_valid: false,
-            color: None,
             next_link: Point::new(0, 0),
-            head: Point::new(0, 0),
+            block: Self::INVALID,
         }
     }
 
-    pub fn is_valid(&self) -> bool {
-        self.is_valid
-    }
-
     pub fn is_empty(&self) -> bool {
-        self.color == None
+        self.block == Self::EMPTY
     }
 
-    pub fn color(&self) -> Option<Color> {
-        self.color
-    }
-
-    pub fn set_color(&mut self, color: Option<Color>) {
-        self.color = color;
+    pub fn is_valid(&self) -> bool {
+        self.block != Self::INVALID
     }
 
     pub fn next_link(&self) -> Point {
@@ -51,11 +40,11 @@ impl Vertex {
         self.next_link = next_link;
     }
 
-    pub fn head(&self) -> Point {
-        self.head
+    pub fn block(&self) -> usize {
+        self.block as usize
     }
 
-    pub fn set_head(&mut self, head: Point) {
-        self.head = head;
+    pub fn set_block(&mut self, block: usize) {
+        self.block = block as u16;
     }
 }

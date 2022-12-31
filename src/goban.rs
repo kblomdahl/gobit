@@ -1,8 +1,10 @@
-use crate::{Color, Point, array2d::Array2D, vertex::Vertex};
+use crate::{Color, Point, array2d::Array2D, vertex::Vertex, block::Block};
+use slab::Slab;
 use std::{ops::{Index, IndexMut}, iter};
 
 pub struct Goban {
-    buf: Array2D<Vertex>
+    buf: Array2D<Vertex>,
+    blocks: Slab<Block>,
 }
 
 impl Index<Point> for Goban {
@@ -23,6 +25,7 @@ impl Goban {
     pub fn new(width: usize, height: usize) -> Self {
         let mut goban = Self {
             buf: Array2D::new(width + 2, height + 2, Vertex::invalid()),
+            blocks: Slab::new(),
         };
 
         for point in goban.iter() {
@@ -59,6 +62,18 @@ impl Goban {
 
             Some(Point::new(x as u8, y as u8))
         })
+    }
+
+    pub fn at(&self, at: Point) -> Option<Color> {
+        if self[at].is_empty() || !self[at].is_valid() {
+            None
+        } else {
+            Some(self.blocks[self[at].block()].color())
+        }
+    }
+
+    fn block_at(&self, at: Point) -> &Block {
+        &self.blocks[self[at].block()]
     }
 
     fn has_exactly_n_liberties<const N: usize>(&self, at: Point) -> bool {
@@ -125,38 +140,42 @@ impl Goban {
                 self[other].is_valid()
                     && (
                         self[other].is_empty()
-                        || (self[other].color() == Some(color) && self.has_n_liberties::<2>(other))
-                        || (self[other].color() == Some(opposite) && self.has_exactly_n_liberties::<1>(other))
+                        || (self.block_at(other).color() == color && self.has_n_liberties::<2>(other))
+                        || (self.block_at(other).color() == opposite && self.has_exactly_n_liberties::<1>(other))
                     )
             })
     }
 
     fn capture_at(&mut self, at: Point) {
         let mut curr = at;
+        let block = self[curr].block();
 
         loop {
-            self[curr].set_color(None);
+            let next_link = self[curr].next_link();
+            self[curr] = Vertex::empty(curr);
 
-            curr = self[curr].next_link();
+            curr = next_link;
             if curr == at {
                 break
             }
         }
+
+        self.blocks.remove(block);
     }
 
     fn connect_with(&mut self, at: Point, to: Point) {
-        let a = self[at].head();
-        let b = self[to].head();
+        let a_block = self[at].block();
+        let b_block = self[to].block();
 
-        if a == b {
+        if a_block == b_block {
             return
         }
 
-        // move ownership of the entire cyclic list at `at` to `to`
+        // move ownership of the entire list at `at` to `to`
         let mut curr = at;
 
         loop {
-            self[curr].set_head(b);
+            self[curr].set_block(b_block);
 
             curr = self[curr].next_link();
             if curr == at {
@@ -173,23 +192,30 @@ impl Goban {
         //
         // 1 -> b -> .. a -> 2 -> .. -> 1
         //
+        let a = self.blocks[a_block].head();
+        let b = self.blocks[b_block].head();
         let a_next = self[a].next_link();
         let b_next = self[b].next_link();
         self[a].set_next_link(b_next);
         self[b].set_next_link(a_next);
+
+        // remove the `at` block which was connected to `to`
+        self.blocks.remove(a_block);
     }
 
     pub fn play(&mut self, at: Point, color: Color) {
         let opposite = color.opposite();
+        let block = self.blocks.insert(Block::new(at, color));
 
-        self[at].set_color(Some(color));
-        self[at].set_head(at);
+        self[at].set_block(block);
         self[at].set_next_link(at);
 
         for other in at.neighbours() {
-            if self[other].color() == Some(opposite) && self.has_exactly_n_liberties::<1>(other) {
+            if self[other].is_empty() || !self[other].is_valid() {
+                // pass
+            } else if self.block_at(other).color() == opposite && self.has_exactly_n_liberties::<1>(other) {
                 self.capture_at(other);
-            } else if self[other].color() == Some(color) {
+            } else if self.block_at(other).color() == color {
                 self.connect_with(at, other);
             }
         }
@@ -217,7 +243,7 @@ mod tests {
         goban.play(Point::new(1, 1), Color::Black);
         goban.play(Point::new(2, 1), Color::Black);
 
-        assert_eq!(goban.iter().filter(|at| goban[*at].color() == Some(Color::Black)).count(), 2);
+        assert_eq!(goban.iter().filter(|at| goban.at(*at) == Some(Color::Black)).count(), 2);
     }
 
     #[test]
@@ -227,8 +253,8 @@ mod tests {
         goban.play(Point::new(1, 2), Color::Black);
         goban.play(Point::new(2, 1), Color::Black);
 
-        assert_eq!(goban.iter().filter(|at| goban[*at].color() == Some(Color::Black)).count(), 2);
-        assert_eq!(goban.iter().filter(|at| goban[*at].color() == Some(Color::White)).count(), 0);
+        assert_eq!(goban.iter().filter(|at| goban.at(*at) == Some(Color::Black)).count(), 2);
+        assert_eq!(goban.iter().filter(|at| goban.at(*at) == Some(Color::White)).count(), 0);
     }
 
     #[test]
@@ -238,7 +264,7 @@ mod tests {
         goban.play(Point::new(2, 1), Color::Black);
         goban.capture_at(Point::new(1, 1));
 
-        assert_eq!(goban.iter().filter(|at| goban[*at].color() == Some(Color::Black)).count(), 0);
+        assert_eq!(goban.iter().filter(|at| goban.at(*at) == Some(Color::Black)).count(), 0);
     }
 
     #[test]
