@@ -22,6 +22,13 @@ impl IndexMut<Point> for Goban {
 }
 
 impl Goban {
+    /// Returns an empty board of the given width `width` and height `height`.
+    ///
+    /// # Arguments
+    ///
+    /// * `width` -
+    /// * `height` -
+    ///
     pub fn new(width: usize, height: usize) -> Self {
         let mut goban = Self {
             buf: Array2D::new(width + 2, height + 2, Vertex::invalid()),
@@ -35,14 +42,17 @@ impl Goban {
         goban
     }
 
+    /// Returns the width of the board.
     pub fn width(&self) -> usize {
         self.buf.width() - 2
     }
 
+    /// Returns the height of the board.
     pub fn height(&self) -> usize {
         self.buf.height() - 2
     }
 
+    /// Returns an iterator over all points of the board.
     pub fn iter(&self) -> impl Iterator<Item=Point> {
         let (mut x, mut y) = (0, 1);
         let width = self.width() - 1;
@@ -64,6 +74,8 @@ impl Goban {
         })
     }
 
+    /// Returns the color of the stone at the given point `at`, or `None` if
+    /// the vertex is empty.
     pub fn at(&self, at: Point) -> Option<Color> {
         if self[at].is_empty() || !self[at].is_valid() {
             None
@@ -81,6 +93,14 @@ impl Goban {
         &mut self.blocks[block]
     }
 
+    /// Returns if playing a stone at the given point `at` and color `color` is
+    /// a valid move according to the rules.
+    ///
+    /// # Arguments
+    ///
+    /// * `at` -
+    /// * `color` -
+    ///
     pub fn is_valid(&self, at: Point, color: Color) -> bool {
         self[at].is_valid() && self[at].is_empty() && at.neighbours()
             .any(|other| {
@@ -202,6 +222,15 @@ impl Goban {
         self.blocks.remove(a_block);
     }
 
+    /// Play a stone at the given vertex `at` of color `color`. This function
+    /// assumes that the given move is valid, and the result is undefined if it
+    /// is not.
+    ///
+    /// # Arguments
+    ///
+    /// * `at` -
+    /// * `color` -
+    ///
     pub fn play(&mut self, at: Point, color: Color) {
         debug_assert!(self.is_valid(at, color));
 
