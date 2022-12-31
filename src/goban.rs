@@ -153,17 +153,9 @@ impl Goban {
     }
 
     fn is_liberty_of(&self, liberty: Point, block: usize) -> bool {
-        let head = self.blocks[block].head();
-        let mut curr = head;
-
-        loop {
-            if curr.is_neighbour(liberty) {
-                return true;
-            }
-
-            curr = self[curr].next_link();
-            if curr == head {
-                break
+        for other in liberty.neighbours() {
+            if self[other].block() == block {
+                return true
             }
         }
 
@@ -171,8 +163,6 @@ impl Goban {
     }
 
     fn connect_single_with(&mut self, at: Point, to_block: usize) {
-        self[at].set_block(to_block);
-
         for other in at.neighbours() {
             if self[other].is_empty() && self[other].is_valid() {
                 if !self.is_liberty_of(other, to_block) {
@@ -180,6 +170,8 @@ impl Goban {
                 }
             }
         }
+
+        self[at].set_block(to_block);
 
         // move `at` to just after the head of the `to_block` in the cyclic
         // list of vertices:
@@ -222,30 +214,8 @@ impl Goban {
         self.blocks.remove(a_block);
     }
 
-    /// Play a stone at the given vertex `at` of color `color`. This function
-    /// assumes that the given move is valid, and the result is undefined if it
-    /// is not.
-    ///
-    /// # Arguments
-    ///
-    /// * `at` -
-    /// * `color` -
-    ///
-    pub fn play(&mut self, at: Point, color: Color) {
-        debug_assert!(self.is_valid(at, color));
-
+    fn play_update_neighbours(&mut self, at: Point, color: Color) {
         let opposite = color.opposite();
-        let block = self.blocks.insert(
-            Block::new(
-                at,
-                color,
-                at.neighbours().filter(|&other| self[other].is_empty() && self[other].is_valid()).count(),
-            )
-        );
-
-        self[at].set_block(block);
-        self[at].set_next_link(at);
-
         let mut visited = [usize::MAX; 4];
         let mut n = 0;
 
@@ -266,6 +236,31 @@ impl Goban {
                 self.connect_with(at, other);
             }
         }
+    }
+
+    /// Play a stone at the given vertex `at` of color `color`. This function
+    /// assumes that the given move is valid, and the result is undefined if it
+    /// is not.
+    ///
+    /// # Arguments
+    ///
+    /// * `at` -
+    /// * `color` -
+    ///
+    pub fn play(&mut self, at: Point, color: Color) {
+        debug_assert!(self.is_valid(at, color));
+
+        let block = self.blocks.insert(
+            Block::new(
+                at,
+                color,
+                at.neighbours().filter(|&other| self[other].is_empty() && self[other].is_valid()).count(),
+            )
+        );
+
+        self[at].set_block(block);
+        self[at].set_next_link(at);
+        self.play_update_neighbours(at, color);
     }
 
     pub fn undo(&mut self) {
