@@ -23,11 +23,18 @@ impl Point {
 
     pub fn neighbours(&self) -> impl Iterator<Item=Point> {
         [
-            Self::new(self.x.saturating_sub(1), self.y),
-            Self::new(self.x.saturating_add(1), self.y),
-            Self::new(self.x, self.y.saturating_sub(1)),
-            Self::new(self.x, self.y.saturating_add(1)),
+            Self::new(self.x - 1, self.y),
+            Self::new(self.x + 1, self.y),
+            Self::new(self.x, self.y - 1),
+            Self::new(self.x, self.y + 1),
         ].into_iter()
+    }
+
+    pub fn is_neighbour(&self, other: Point) -> bool {
+        let dx = (other.x as i8).abs_diff(self.x as i8);
+        let dy = (other.y as i8).abs_diff(self.y as i8);
+
+        (dx == 0 && dy == 1) || (dx == 1 && dy == 0)
     }
 
     pub fn x(&self) -> usize {

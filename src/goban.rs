@@ -137,10 +137,8 @@ impl Goban {
         let mut curr = head;
 
         loop {
-            for other in curr.neighbours() {
-                if other == liberty {
-                    return true;
-                }
+            if curr.is_neighbour(liberty) {
+                return true;
             }
 
             curr = self[curr].next_link();
