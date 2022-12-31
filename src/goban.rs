@@ -81,24 +81,13 @@ impl Goban {
         &mut self.blocks[block]
     }
 
-    fn has_exactly_n_liberties<const N: usize>(&self, at: Point) -> bool {
-        self.block_at(at).num_liberties() == N
-    }
-
-    fn has_n_liberties<const N: usize>(&self, at: Point) -> bool {
-        self.block_at(at).num_liberties() >= N
-    }
-
     pub fn is_valid(&self, at: Point, color: Color) -> bool {
-        let opposite = color.opposite();
-
         self[at].is_valid() && self[at].is_empty() && at.neighbours()
             .any(|other| {
                 self[other].is_valid()
                     && (
                         self[other].is_empty()
-                        || (self.block_at(other).color() == color && self.has_n_liberties::<2>(other))
-                        || (self.block_at(other).color() == opposite && self.has_exactly_n_liberties::<1>(other))
+                        || (self.block_at(other).color() == color) == (self.block_at(other).num_liberties() >= 2)
                     )
             })
     }
@@ -235,12 +224,12 @@ impl Goban {
             if self[other].is_empty() || !self[other].is_valid() {
                 // pass
             } else if self.block_at(other).color() == opposite {
-                let other_block = self[other].block();
+                let block = self[other].block();
 
-                if self.has_exactly_n_liberties::<1>(other) {
+                if self.block_at(other).num_liberties() == 1 {
                     self.capture_at(other);
-                } else if !visited[0..n].contains(&other_block) {
-                    visited[n] = other_block;
+                } else if !visited[0..n].contains(&block) {
+                    visited[n] = block;
                     n += 1;
                     self.block_at_mut(other).dec_num_liberties();
                 }
@@ -297,26 +286,11 @@ mod tests {
     }
 
     #[test]
-    fn has_exactly_n_liberties_returns_liberties() {
+    fn has_exactly_n_liberties() {
         let mut goban = Goban::new(9, 9);
         goban.play(Point::new(1, 1), Color::Black);
         goban.play(Point::new(2, 1), Color::Black);
 
-        assert!(!goban.has_exactly_n_liberties::<1>(Point::new(1, 1)));
-        assert!(!goban.has_exactly_n_liberties::<2>(Point::new(1, 1)));
-        assert!(goban.has_exactly_n_liberties::<3>(Point::new(1, 1)));
-        assert!(!goban.has_exactly_n_liberties::<4>(Point::new(1, 1)));
-    }
-
-    #[test]
-    fn has_n_liberties_returns_liberties() {
-        let mut goban = Goban::new(9, 9);
-        goban.play(Point::new(1, 1), Color::Black);
-        goban.play(Point::new(2, 1), Color::Black);
-
-        assert!(goban.has_n_liberties::<1>(Point::new(1, 1)));
-        assert!(goban.has_n_liberties::<2>(Point::new(1, 1)));
-        assert!(goban.has_n_liberties::<3>(Point::new(1, 1)));
-        assert!(!goban.has_n_liberties::<4>(Point::new(1, 1)));
+        assert_eq!(goban.block_at(Point::new(1, 1)).num_liberties(), 3);
     }
 }
