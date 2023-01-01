@@ -102,14 +102,17 @@ impl Goban {
     /// * `color` -
     ///
     pub fn is_valid(&self, at: Point, color: Color) -> bool {
-        self[at].is_valid() && self[at].is_empty() && at.neighbours()
-            .any(|other| {
-                self[other].is_valid()
-                    && (
-                        self[other].is_empty()
-                        || (self.block_at(other).color() == color) == (self.block_at(other).num_liberties() >= 2)
-                    )
-            })
+        self[at].is_valid() && self[at].is_empty() && {
+            for other in at.neighbours() {
+                if !self[other].is_valid() {
+                    // pass
+                } else if self[other].is_empty() || (self.block_at(other).color() == color) == (self.block_at(other).num_liberties() >= 2) {
+                    return true;
+                }
+            }
+
+            false
+        }
     }
 
     fn capture_single_at(&mut self, at: Point) {

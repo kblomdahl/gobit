@@ -22,12 +22,10 @@ impl Point {
     }
 
     pub fn neighbours(&self) -> impl Iterator<Item=Point> {
-        [
-            Self::new(self.x - 1, self.y),
-            Self::new(self.x + 1, self.y),
-            Self::new(self.x, self.y - 1),
-            Self::new(self.x, self.y + 1),
-        ].into_iter()
+        const DELTA: [u8; 6] = [u8::MAX, 1, 0, 0, u8::MAX, 1];
+        let (x, y) = (self.x, self.y);
+
+        (0..4).map(move |i| Self::new(x.wrapping_add(DELTA[i]), y.wrapping_add(DELTA[i+2])))
     }
 
     pub fn is_neighbour(&self, other: Point) -> bool {
