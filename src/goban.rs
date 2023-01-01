@@ -1,23 +1,25 @@
-use crate::{Color, Point, array2d::Array2D, vertex::Vertex, block::Block};
+use crate::{Color, Point, array2d::Array2D, vertex::Vertex, block::Block, zobrist, ring::Ring};
 use slab::Slab;
 use std::{ops::{Index, IndexMut}, iter};
 
 pub struct Goban {
-    buf: Array2D<Vertex>,
+    vertices: Array2D<Vertex>,
     blocks: Slab<Block>,
+    super_ko: Ring<u32, 8>,
+    hash: u32,
 }
 
 impl Index<Point> for Goban {
     type Output = Vertex;
 
     fn index(&self, index: Point) -> &Self::Output {
-        &self.buf[(index.x(), index.y())]
+        &self.vertices[(index.x(), index.y())]
     }
 }
 
 impl IndexMut<Point> for Goban {
     fn index_mut(&mut self, index: Point) -> &mut Self::Output {
-        &mut self.buf[(index.x(), index.y())]
+        &mut self.vertices[(index.x(), index.y())]
     }
 }
 
@@ -31,8 +33,10 @@ impl Goban {
     ///
     pub fn new(width: usize, height: usize) -> Self {
         let mut goban = Self {
-            buf: Array2D::new(width + 2, height + 2, Vertex::invalid()),
+            vertices: Array2D::new(width + 2, height + 2, Vertex::invalid()),
             blocks: Slab::new(),
+            super_ko: Ring::new(zobrist::empty()),
+            hash: zobrist::empty(),
         };
 
         for point in goban.iter() {
@@ -44,12 +48,12 @@ impl Goban {
 
     /// Returns the width of the board.
     pub fn width(&self) -> usize {
-        self.buf.width() - 2
+        self.vertices.width() - 2
     }
 
     /// Returns the height of the board.
     pub fn height(&self) -> usize {
-        self.buf.height() - 2
+        self.vertices.height() - 2
     }
 
     /// Returns an iterator over all points of the board.
@@ -100,25 +104,36 @@ impl Goban {
         unsafe { self.blocks.get_unchecked_mut(block) }
     }
 
+    fn is_super_ko(&self, hash: u32) -> bool {
+        self.super_ko.contains(hash)
+    }
+
     /// Returns if playing a stone at the given point `at` and color `color` is
-    /// a valid move according to the rules.
+    /// a legal move according to the rules.
     ///
     /// # Arguments
     ///
     /// * `at` -
     /// * `color` -
     ///
-    pub fn is_valid(&self, at: Point, color: Color) -> bool {
+    pub fn is_legal(&self, at: Point, color: Color) -> bool {
         self[at].is_valid() && self[at].is_empty() && {
+            let opposite = color.opposite();
+            let mut hash = zobrist::hash(at, color);
+            let mut is_legal = false;
+
             for other in at.neighbours() {
                 if !self[other].is_valid() {
                     // pass
-                } else if self[other].is_empty() || (self.block_at(other).color() == color) == (self.block_at(other).num_liberties() >= 2) {
-                    return true;
+                } else if self[other].is_empty() || (self.block_at(other).color() == color && self.block_at(other).num_liberties() >= 2) {
+                    is_legal = true;
+                } else if self.block_at(other).color() == opposite && self.block_at(other).num_liberties() == 1 {
+                    hash ^= self.block_at(other).hash();
+                    is_legal = true;
                 }
             }
 
-            false
+            is_legal && !self.is_super_ko(self.hash ^ hash)
         }
     }
 
@@ -145,14 +160,14 @@ impl Goban {
         self[at] = Vertex::empty(at);
     }
 
-    fn capture_at(&mut self, at: Point) {
+    fn capture_at(&mut self, at: Point) -> u32 {
         let mut curr = at;
         let block = self[curr].block();
+        let hash = self.block_by(block).hash();
 
         loop {
             let next_link = self[curr].next_link();
             self.capture_single_at(curr);
-
             curr = next_link;
             if curr == at {
                 break
@@ -160,6 +175,7 @@ impl Goban {
         }
 
         self.blocks.remove(block);
+        hash
     }
 
     fn is_liberty_of(&self, liberty: Point, block: usize) -> bool {
@@ -209,6 +225,7 @@ impl Goban {
         }
 
         let mut curr = at;
+        let a_hash = self.block_by(a_block).hash();
 
         loop {
             let next_link = self[curr].next_link();
@@ -221,6 +238,7 @@ impl Goban {
         }
 
         self.block_by_mut(b_block).dec_num_liberties();
+        self.block_by_mut(b_block).update_hash(a_hash);
         self.blocks.remove(a_block);
     }
 
@@ -236,7 +254,7 @@ impl Goban {
                 let other_block = self[other].block();
 
                 if self.block_at(other).num_liberties() == 1 {
-                    self.capture_at(other);
+                    self.hash ^= self.capture_at(other);
                 } else if !visited[0..n].contains(&other_block) {
                     visited[n] = other_block;
                     n += 1;
@@ -258,19 +276,22 @@ impl Goban {
     /// * `color` -
     ///
     pub fn play(&mut self, at: Point, color: Color) {
-        debug_assert!(self.is_valid(at, color));
+        debug_assert!(self.is_legal(at, color));
 
         let block = self.blocks.insert(
             Block::new(
                 at,
                 color,
-                at.neighbours().filter(|&other| self[other].is_empty() && self[other].is_valid()).count(),
+                at.neighbours().filter(|&other| self[other].is_empty() && self[other].is_valid()).count() as u8,
+                zobrist::hash(at, color),
             )
         );
 
         self[at].set_block(block);
         self[at].set_next_link(at);
+        self.hash ^= zobrist::hash(at, color);
         self.play_update_neighbours(at, color);
+        self.super_ko.insert(self.hash);
     }
 
     pub fn undo(&mut self) {
@@ -360,5 +381,22 @@ mod tests {
 
         assert_eq!(goban.block_at(Point::new(3, 3)).num_liberties(), 7);
         assert_eq!(goban.block_at(Point::new(2, 1)).num_liberties(), 1);
+    }
+
+    /// ```
+    /// x o x
+    /// o x
+    /// ```
+    #[test]
+    fn is_legal_detects_super_ko() {
+        let mut goban = Goban::new(9, 9);
+        goban.play(Point::new(1, 1), Color::Black);
+        goban.play(Point::new(2, 2), Color::Black);
+        goban.play(Point::new(3, 1), Color::Black);
+        goban.play(Point::new(1, 2), Color::White);
+        goban.play(Point::new(2, 1), Color::White);
+
+        assert_eq!(goban.at(Point::new(1, 1)), None);
+        assert!(!goban.is_legal(Point::new(1, 1), Color::Black));
     }
 }

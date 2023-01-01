@@ -95,8 +95,8 @@ fn playout(moves: &[(char, (u8, u8))]) -> Goban {
             _ => unreachable!(),
         };
 
-        debug_assert!(goban.is_valid(at, color));
-        goban.play(at, color)
+        debug_assert!(goban.is_legal(at, color));
+        goban.play(at, color);
     }
 
     goban

@@ -29,6 +29,7 @@ impl Into<(u8, u8)> for Point {
 }
 
 impl Point {
+    #[inline]
     pub(super) fn new(x: u8, y: u8) -> Self {
         Self { x, y }
     }
@@ -38,13 +39,6 @@ impl Point {
         let (x, y) = (self.x, self.y);
 
         (0..4).map(move |i| Self::new(x.wrapping_add(DELTA[i]), y.wrapping_add(DELTA[i+2])))
-    }
-
-    pub fn is_neighbour(&self, other: Point) -> bool {
-        let dx = (other.x as i8).abs_diff(self.x as i8);
-        let dy = (other.y as i8).abs_diff(self.y as i8);
-
-        (dx == 0 && dy == 1) || (dx == 1 && dy == 0)
     }
 
     pub fn x(&self) -> usize {

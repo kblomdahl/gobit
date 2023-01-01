@@ -55,7 +55,7 @@ fn features(moves: &[(char, (u8, u8))]) -> (Goban, usize) {
         };
 
         for point in goban.iter() {
-            if goban.is_valid(point, color) {
+            if goban.is_legal(point, color) {
                 count += 1;
             }
         }

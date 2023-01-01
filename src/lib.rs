@@ -3,7 +3,9 @@ mod block;
 mod color;
 mod goban;
 mod point;
+mod ring;
 mod vertex;
+mod zobrist;
 
 pub use self::color::Color;
 pub use self::goban::Goban;
