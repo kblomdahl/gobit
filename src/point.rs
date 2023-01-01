@@ -16,6 +16,18 @@ impl From<(u8, u8)> for Point {
     }
 }
 
+impl Into<(usize, usize)> for Point {
+    fn into(self) -> (usize, usize) {
+        (self.x as usize - 1, self.y as usize - 1)
+    }
+}
+
+impl Into<(u8, u8)> for Point {
+    fn into(self) -> (u8, u8) {
+        (self.x - 1, self.y - 1)
+    }
+}
+
 impl Point {
     pub(super) fn new(x: u8, y: u8) -> Self {
         Self { x, y }
