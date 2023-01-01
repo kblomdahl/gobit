@@ -80,17 +80,24 @@ impl Goban {
         if self[at].is_empty() || !self[at].is_valid() {
             None
         } else {
-            Some(self.blocks[self[at].block()].color())
+            Some(self.block_at(at).color())
         }
     }
 
     fn block_at(&self, at: Point) -> &Block {
-        &self.blocks[self[at].block()]
+        self.block_by(self[at].block())
     }
 
     fn block_at_mut(&mut self, at: Point) -> &mut Block {
-        let block = self[at].block();
-        &mut self.blocks[block]
+        self.block_by_mut(self[at].block())
+    }
+
+    fn block_by(&self, block: usize) -> &Block {
+        unsafe { self.blocks.get_unchecked(block) }
+    }
+
+    fn block_by_mut(&mut self, block: usize) -> &mut Block {
+        unsafe { self.blocks.get_unchecked_mut(block) }
     }
 
     /// Returns if playing a stone at the given point `at` and color `color` is
@@ -169,7 +176,7 @@ impl Goban {
         for other in at.neighbours() {
             if self[other].is_empty() && self[other].is_valid() {
                 if !self.is_liberty_of(other, to_block) {
-                    self.blocks[to_block].inc_num_liberties();
+                    self.block_by_mut(to_block).inc_num_liberties();
                 }
             }
         }
@@ -186,7 +193,7 @@ impl Goban {
         //
         // 1 -> a -> 2 -> .. -> 1 (cyclic)
         //
-        let to_head = self.blocks[to_block].head();
+        let to_head = self.block_by(to_block).head();
         let to_head_next = self[to_head].next_link();
 
         self[to_head].set_next_link(at);
@@ -213,7 +220,7 @@ impl Goban {
             }
         }
 
-        self.blocks[b_block].dec_num_liberties();
+        self.block_by_mut(b_block).dec_num_liberties();
         self.blocks.remove(a_block);
     }
 
