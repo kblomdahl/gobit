@@ -1,3 +1,4 @@
+#[derive(Clone)]
 pub struct Ring<T: Copy + PartialEq, const N: usize> {
     elements: [T; N],
     position: usize,

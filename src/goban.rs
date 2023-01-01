@@ -2,11 +2,22 @@ use crate::{Color, Point, array2d::Array2D, vertex::Vertex, block::Block, zobris
 use slab::Slab;
 use std::{ops::{Index, IndexMut}, iter};
 
+#[derive(Clone)]
 pub struct Goban {
     vertices: Array2D<Vertex>,
     blocks: Slab<Block>,
     super_ko: Ring<u32, 8>,
     hash: u32,
+}
+
+impl Eq for Goban {
+    // pass
+}
+
+impl PartialEq for Goban {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash == other.hash
+    }
 }
 
 impl Index<Point> for Goban {
@@ -92,10 +103,6 @@ impl Goban {
         self.block_by(self[at].block())
     }
 
-    fn block_at_mut(&mut self, at: Point) -> &mut Block {
-        self.block_by_mut(self[at].block())
-    }
-
     fn block_by(&self, block: usize) -> &Block {
         unsafe { self.blocks.get_unchecked(block) }
     }
@@ -152,7 +159,7 @@ impl Goban {
                     visited[n] = other_block;
                     n += 1;
 
-                    self.block_at_mut(other).inc_num_liberties();
+                    self.block_by_mut(other_block).inc_num_liberties();
                 }
             }
         }
@@ -258,7 +265,7 @@ impl Goban {
                 } else if !visited[0..n].contains(&other_block) {
                     visited[n] = other_block;
                     n += 1;
-                    self.block_at_mut(other).dec_num_liberties();
+                    self.block_by_mut(other_block).dec_num_liberties();
                 }
             } else if self.block_at(other).color() == color {
                 self.connect_with(at, other);
