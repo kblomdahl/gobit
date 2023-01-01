@@ -23,20 +23,16 @@ impl<T: Copy> Array2D<T> {
         self.height
     }
 
-    pub fn get(&self, x: usize, y: usize) -> Option<&T> {
-        if x < self.width && y < self.height {
-            Some(&self.buf[self.width * y + x])
-        } else {
-            None
-        }
+    pub fn get(&self, x: usize, y: usize) -> &T {
+        debug_assert!(x < self.width && y < self.height);
+
+        unsafe { self.buf.get_unchecked(self.width * y + x) }
     }
 
-    pub fn get_mut(&mut self, x: usize, y: usize) -> Option<&mut T> {
-        if x < self.width && y < self.height {
-            Some(&mut self.buf[self.width * y + x])
-        } else {
-            None
-        }
+    pub fn get_mut(&mut self, x: usize, y: usize) -> &mut T {
+        debug_assert!(x < self.width && y < self.height);
+
+        unsafe { self.buf.get_unchecked_mut(self.width * y + x) }
     }
 }
 
@@ -44,13 +40,13 @@ impl<T: Copy> Index<(usize, usize)> for Array2D<T> {
     type Output = T;
 
     fn index(&self, index: (usize, usize)) -> &Self::Output {
-        self.get(index.0, index.1).unwrap()
+        self.get(index.0, index.1)
     }
 }
 
 impl<T: Copy> IndexMut<(usize, usize)> for Array2D<T> {
     fn index_mut(&mut self, index: (usize, usize)) -> &mut Self::Output {
-        self.get_mut(index.0, index.1).unwrap()
+        self.get_mut(index.0, index.1)
     }
 }
 
@@ -64,7 +60,7 @@ mod tests {
 
         for x in 0..19 {
             for y in 0..19 {
-                assert_eq!(arr.get(x, y), Some(&7i32));
+                assert_eq!(arr.get(x, y), &7i32);
             }
         }
     }
