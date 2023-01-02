@@ -1,6 +1,7 @@
 mod array2d;
 mod block;
 mod color;
+mod display;
 mod goban;
 mod point;
 mod ring;
