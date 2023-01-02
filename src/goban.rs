@@ -260,12 +260,15 @@ impl Goban {
             } else if self.block_at(other).color() == opposite {
                 let other_block = self[other].block();
 
-                if self.block_at(other).num_liberties() == 1 {
-                    self.hash ^= self.capture_at(other);
-                } else if !visited[0..n].contains(&other_block) {
+                if !visited[0..n].contains(&other_block) {
                     visited[n] = other_block;
                     n += 1;
-                    self.block_by_mut(other_block).dec_num_liberties();
+
+                    if self.block_at(other).num_liberties() == 1 {
+                        self.hash ^= self.capture_at(other);
+                    } else  {
+                        self.block_by_mut(other_block).dec_num_liberties();
+                    }
                 }
             } else if self.block_at(other).color() == color {
                 self.connect_with(at, other);
