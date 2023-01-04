@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use gobit::{Color, Goban, Eye, Pattern};
+use gobit::{Color, Goban, pattern::{Eye, Pattern}};
 
 const BYUN_SANGIL_TANG_WEIXING: [(char, (u8, u8)); 262] = [
     ('B', (16, 3)), ('W', (15, 15)), ('B', (3, 2)), ('W', (2, 15)), ('B', (2, 4)), ('W', (14, 2)), ('B', (15, 4)),
