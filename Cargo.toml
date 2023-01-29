@@ -5,6 +5,9 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[profile.release]
+debug = true
+
 [[bench]]
 name = "features"
 harness = false
@@ -13,8 +16,13 @@ harness = false
 name = "playout"
 harness = false
 
+[[bench]]
+name = "score"
+harness = false
+
 [dev-dependencies]
 criterion = "0.4"
 
 [dependencies]
 slab = "0.4"
+rand = "0.8"
