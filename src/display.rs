@@ -26,7 +26,7 @@ impl Display for Goban {
         for _ in 0..width { write!(f, "══")?; }
         write!(f, "╝\n")?;
 
-        for _ in 0..(2 * width - 15) { write!(f, " ")?; }
+        for _ in 0..(2 * width.saturating_sub(15)) { write!(f, " ")?; }
         write!(f, "× Black   ○ White")
     }
 }
