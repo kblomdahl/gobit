@@ -111,7 +111,7 @@ fn every_move_is_not_an_eye(moves: &[(char, (u8, u8))]) -> (Goban, usize) {
             _ => unreachable!(),
         };
 
-        for _ in Eye::new(color).into_searcher(&goban) {
+        for _ in Eye::new().into_searcher(&goban).into_iter().filter(|&(eye_color, _)| eye_color == color) {
             count += 1;
         }
 

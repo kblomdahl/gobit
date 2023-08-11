@@ -1,27 +1,37 @@
 use crate::{Goban, Color};
-
 use super::search_tree::SearchTree;
+use std::fmt::Debug;
 
 /// Determine the final score of the given game using a small Monte Carlo Tree
 /// Search (MCTS).
 pub struct Score<'a> {
     goban: &'a Goban,
-    winner: Color,
+    search_tree: SearchTree,
+}
+
+impl<'a> Debug for Score<'a> {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        writeln!(f, "{:?}", self.search_tree)?;
+        writeln!(f, "{}", self.search_tree.as_sgf(self.goban))
+    }
 }
 
 impl<'a> Score<'a> {
     pub fn new(goban: &'a Goban, to_move: Color, komi: f32) -> Self {
         let mut search_tree = SearchTree::new(goban, to_move, 0);
-        for _ in 0..3200 { search_tree.probe(goban.clone(), komi); }
+        loop {
+            search_tree.probe(goban.clone(), komi);
 
-        Self {
-            goban,
-            winner: search_tree.winner(),
+            if search_tree.total_sims() > 32_000 || search_tree.is_done(0.51) {
+                break
+            }
         }
+
+        Self { goban, search_tree }
     }
 
     pub fn winner(&self) -> Color {
-        self.winner
+        self.search_tree.winner()
     }
 }
 
@@ -46,10 +56,9 @@ mod tests {
         goban.play((0u8, 1u8).into(), Color::White);
 
         for _ in 0..10 {
-            assert_eq!(
-                Score::new(&goban, Color::Black, 0.5).winner(),
-                Color::Black
-            );
+            let score = Score::new(&goban, Color::Black, 0.5);
+
+            assert_eq!(score.winner(), Color::Black, "{:?}", score);
         }
     }
 
@@ -92,10 +101,9 @@ mod tests {
         goban.play((8u8, 3u8).into(), Color::White);
 
         for _ in 0..10 {
-            assert_eq!(
-                Score::new(&goban, Color::White, 0.5).winner(),
-                Color::White
-            );
+            let score = Score::new(&goban, Color::White, 0.5);
+
+            assert_eq!(score.winner(), Color::White, "{:?}", score);
         }
     }
 }

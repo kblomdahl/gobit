@@ -1,8 +1,6 @@
-use crate::{Color, Goban, Point, pattern::{Eye, Pattern, Searcher, SearchStep}};
-use rand::prelude::*;
-use std::{iter, fmt::{Debug, Display}, cmp::Ordering};
-
-const EXPANSION_LIMIT: u32 = 8;
+use crate::{Color, Goban, Point};
+use std::{fmt::{Debug, Display}, cmp::Ordering};
+use statrs::distribution::{Normal, ContinuousCDF};
 
 #[derive(PartialEq)]
 struct OrderedFloat(f32);
@@ -35,10 +33,45 @@ impl Eq for OrderedFloat {
     // pass
 }
 
+struct CandidateStatistics {
+    mean: f32,
+    count: f32,
+    m2: f32,
+}
+
+impl CandidateStatistics {
+    fn new() -> Self {
+        Self {
+            mean: 0.0,
+            count: 0.0,
+            m2: 0.0
+        }
+    }
+
+    fn update(&mut self, new_value: f32) {
+        let delta = new_value - self.mean;
+
+        self.count += 1.0;
+        self.mean += delta / self.count;
+        self.m2 += delta * (new_value - self.mean);
+    }
+
+    fn mean(&self) -> f32 {
+        self.mean
+    }
+
+    fn count(&self) -> f32 {
+        self.count
+    }
+
+    fn variance(&self) -> f32 {
+        self.m2 / (self.count - 1.0)
+    }
+}
+
 struct Candidate {
     at: Point,
-    sims: u32,
-    wins: u32,
+    stats: CandidateStatistics,
     child: Option<Box<SearchTree>>,
 }
 
@@ -48,8 +81,7 @@ impl Candidate {
     fn new(at: Point) -> Self {
         Self {
             at,
-            sims: 0,
-            wins: 0,
+            stats: CandidateStatistics::new(),
             child: None
         }
     }
@@ -62,112 +94,76 @@ impl Candidate {
         self.at == Self::PASS.into()
     }
 
-    /*
-    fn ucb1(&self, total_sims: u32) -> u32 {
-        const SHIFT_LEFT: u32 = 8;
-        let ln_total_sims = if total_sims == 0 { 0 } else { total_sims.ilog2() };
-
-        if self.sims == 0 {
-            1 << (SHIFT_LEFT - 1) + isqrt(ln_total_sims << (SHIFT_LEFT * 2))
-        } else {
-            let win_pct = (self.wins << SHIFT_LEFT) / self.sims;
-            let ln_total_sims_pct = (ln_total_sims << SHIFT_LEFT) / self.sims;
-
-            win_pct + isqrt(ln_total_sims_pct << SHIFT_LEFT)
-        }
+    fn update(&mut self, prob: f32) {
+        self.stats.update(prob);
     }
-    */
+
+    fn mean(&self) -> f32 {
+        self.stats.mean()
+    }
+
+    fn wins(&self) -> f32 {
+        self.stats.mean() * self.stats.count()
+    }
+
+    fn sims(&self) -> f32 {
+        self.stats.count()
+    }
+
+    fn variance(&self) -> f32 {
+        self.stats.variance()
+    }
 
     fn ucb1(&self, total_sims: u32) -> OrderedFloat {
-        const C: f32 = 1.41;
+        const C: f32 = 4.0;
         let ln_total_sims = if total_sims == 0 { 0.0 } else { (total_sims as f32).ln() };
 
-        OrderedFloat(if self.sims == 0 {
+        OrderedFloat(if self.sims() == 0.0 {
             0.5 + ln_total_sims.sqrt()
         } else {
-            let win_pct = self.wins as f32 / self.sims as f32;
-            let ln_total_sims_pct = ln_total_sims / self.sims as f32;
+            let win_pct = self.wins() / self.sims();
+            let ln_total_sims_pct = ln_total_sims / self.sims();
 
             win_pct + C * ln_total_sims_pct.sqrt()
         })
     }
 }
 
-fn isqrt(mut n: u32) -> u32 {
-    if n == 0 {
-        return 0;
-    }
-
-    // Compute bit, the largest power of 4 <= n
-    let max_shift: u32 = 0u32.leading_zeros() - 1;
-    let shift: u32 = (max_shift - n.leading_zeros()) & !1;
-
-    // https://en.wikipedia.org/wiki/Methods_of_computing_square_roots#Binary_numeral_system_(base_2)
-    let mut bit = 1u32 << shift;
-    let mut result = 0u32;
-
-    while bit != 0 {
-        if n >= (result + bit) {
-            n = n - (result + bit);
-            result = (result >> 1) + bit;
-        } else {
-            result = result >> 1;
-        }
-        bit = bit >> 2;
-    }
-
-    result
-}
-
 pub struct ProbeResult {
-    goban: Goban,
     black: u16,
     white: u16,
+    undecided: u16,
     komi: f32
 }
 
 impl ProbeResult {
-    fn playout(mut goban: Goban, mut to_move: Color, komi: f32) -> Self {
-        let mut pass_count = 0;
-
-        while pass_count < 2 {
-            let mut eye_searcher = Eye::new(to_move).into_searcher(&goban);
-            let candidate = iter::from_fn(|| {
-                loop {
-                    match eye_searcher.next() {
-                        SearchStep::Done => { return None },
-                        SearchStep::Reject(at) if goban.is_legal(at, to_move) => { return Some(at) },
-                        _ => { },
-                    }
-                }
-            }).choose(&mut thread_rng());
-
-            if let Some(at) = candidate {
-                goban.play(at, to_move);
-                pass_count = 0;
-            } else {
-                pass_count += 1;
-            }
-
-            to_move = to_move.opposite();
-        }
-
-        Self::score(goban, komi)
-    }
-
     fn score(goban: Goban, komi: f32) -> Self {
         let mut black = 0;
         let mut white = 0;
+        let mut undecided = 0;
 
         for at in goban.iter() {
             match goban.at(at) {
                 None => {
-                    let neighbour = at.neighbours().filter(|&n| goban[n].is_valid()).next().unwrap();
+                    let mut black_neighbours = 0;
+                    let mut white_neighbours = 0;
 
-                    match goban.at(neighbour) {
-                        None => { /* pass */ },
-                        Some(Color::Black) => { black += 1; },
-                        Some(Color::White) => { white += 1; },
+                    for neighbour in at.neighbours().filter(|&n| goban[n].is_valid()) {
+                        match goban.at(neighbour) {
+                            Some(Color::Black) => { black_neighbours += 1 },
+                            Some(Color::White) => { white_neighbours += 1 },
+                            None => {},
+                        }
+                    }
+
+                    if black_neighbours + white_neighbours == 0 {
+                        undecided += 1;
+                    } else if black_neighbours == black_neighbours + white_neighbours {
+                        black += 1;
+                    } else if white_neighbours == black_neighbours + white_neighbours {
+                        white += 1;
+                    } else {
+                        undecided += 1;
                     }
                 },
                 Some(Color::Black) => { black += 1; },
@@ -175,18 +171,22 @@ impl ProbeResult {
             }
         }
 
-        Self { goban, black, white, komi }
+        Self { black, white, undecided, komi }
     }
 
-    pub fn goban(&self) -> &Goban {
-        &self.goban
-    }
-
-    pub fn winner(&self) -> Color {
-        if self.black as f32 > self.white as f32 + self.komi {
-            Color::Black
+    pub fn winner(&self) -> (Color, f32) {
+        if self.undecided == 0 {
+            if (self.black as f32) > self.white as f32 + self.komi {
+                (Color::Black, 1.0)
+            } else {
+                (Color::White, 1.0)
+            }
         } else {
-            Color::White
+            let mean = self.white as f64 + self.komi as f64 - self.black as f64;
+            let std = 2.0 * self.undecided as f64 / 12.0;
+            let black_prob = Normal::new(mean, std).unwrap();
+
+            (Color::Black, black_prob.cdf(0.0) as f32)
         }
     }
 }
@@ -206,7 +206,7 @@ impl Debug for SearchTree {
         })?;
 
         let mut candidates = self.candidates.iter().collect::<Vec<_>>();
-        candidates.sort_unstable_by_key(|cand| -(cand.sims as i64));
+        candidates.sort_unstable_by_key(|cand| OrderedFloat(-cand.sims()));
 
         for cand in candidates.iter().take(10) {
             let description = if cand.is_pass() {
@@ -220,14 +220,15 @@ impl Debug for SearchTree {
                     y + 1,
                 )
             };
-            let win_pct = cand.wins as f32 / cand.sims as f32;
+            let win_pct = cand.wins() / cand.sims();
 
             writeln!(
                 f,
-                "{:7} / {:5} ({:.2}) {} (ucb1 {})",
-                cand.sims,
-                cand.wins,
+                "{:7} / {:5} ({:.2} +/- {:.2}) {} (ucb1 {})",
+                cand.sims(),
+                cand.wins(),
                 if win_pct.is_finite() { win_pct } else { 0.0 },
+                cand.variance().sqrt(),
                 description,
                 cand.ucb1(self.total_sims),
             )?;
@@ -257,8 +258,11 @@ impl SearchTree {
             'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
         ];
 
-        self.candidates.iter()
-            .filter(|cand| cand.sims > 0)
+        let mut candidates = self.candidates.iter()
+            .filter(|cand| cand.sims() > 0.0)
+            .collect::<Vec<_>>();
+        candidates.sort_unstable_by_key(|cand| -(cand.sims() as i64));
+        candidates.iter()
             .map(|cand| {
                 let color = match self.to_move {
                     Color::Black => 'B',
@@ -272,10 +276,12 @@ impl SearchTree {
                     format!("{}{}", LETTERS[x], LETTERS[y])
                 };
                 let comment = format!(
-                    "{} ({} / {})",
+                    "{} ({} / {}) = {} +/- {}",
                     color,
-                    cand.wins,
-                    cand.sims,
+                    cand.wins(),
+                    cand.sims(),
+                    cand.mean(),
+                    cand.variance().sqrt(),
                 );
 
                 if let Some(next_child) = &cand.child {
@@ -311,7 +317,7 @@ impl SearchTree {
 
     pub fn as_sgf(&self, goban: &Goban) -> String {
         format!(
-            "(FF[3]SZ[{}];{}{}{})",
+            "(FF[3]SZ[{}]{}{};{})",
             goban.width().max(goban.height()),
             self.as_sgf_stone_list(goban, "AB", Color::Black),
             self.as_sgf_stone_list(goban, "AW", Color::White),
@@ -319,12 +325,23 @@ impl SearchTree {
         )
     }
 
+    pub fn total_sims(&self) -> u32 {
+        self.total_sims
+    }
+
+    pub fn is_done(&self, prob: f32) -> bool {
+        let inv_prob2 = (1.0 - prob) * (1.0 - prob);
+
+        self.candidates.iter()
+            .all(|cand| cand.sims() > 1.0 && cand.variance() < inv_prob2)
+    }
+
     pub fn winner(&self) -> Color {
         let most_sims = self.candidates.iter()
-            .max_by_key(|cand| cand.sims)
+            .max_by_key(|cand| OrderedFloat(cand.sims()))
             .unwrap();
 
-        if most_sims.wins > most_sims.sims / 2 {
+        if most_sims.mean() > 0.5 {
             self.to_move
         } else {
             self.to_move.opposite()
@@ -339,7 +356,7 @@ impl SearchTree {
         let total_sims = self.total_sims;
 
         self.candidates.iter_mut()
-            .max_by_key(|cand| (cand.ucb1(total_sims), thread_rng().next_u32()))
+            .max_by_key(|cand| cand.ucb1(total_sims))
             .unwrap()
     }
 
@@ -355,15 +372,15 @@ impl SearchTree {
             ProbeResult::score(goban, komi)
         } else if let Some(next_child) = candidate.child.as_mut() {
             next_child.probe(goban, komi)
-        } else if candidate.sims >= EXPANSION_LIMIT {
+        } else if candidate.sims() >= 1.0 {
             candidate.child = Some(Box::new(SearchTree::new(&goban, to_move.opposite(), pass_count)));
             candidate.child.as_mut().unwrap().probe(goban, komi)
         } else {
-            ProbeResult::playout(goban, to_move, komi)
+            ProbeResult::score(goban, komi)
         };
 
-        candidate.wins += if probe_result.winner() == to_move { 1 } else { 0 };
-        candidate.sims += 1;
+        let (winner, prob) = probe_result.winner();
+        candidate.update(if winner == to_move { prob } else { 1.0 - prob });
 
         probe_result
     }

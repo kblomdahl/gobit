@@ -25,4 +25,4 @@ criterion = "0.4"
 
 [dependencies]
 slab = "0.4"
-rand = "0.8"
+statrs = "0.16"
