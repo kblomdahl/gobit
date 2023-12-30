@@ -1,6 +1,5 @@
-use crate::{Color, Goban, Point};
+use crate::{Color, Goban, Point, score::normal::Normal};
 use std::{fmt::{Debug, Display}, cmp::Ordering};
-use statrs::distribution::{Normal, ContinuousCDF};
 
 #[derive(PartialEq)]
 struct OrderedFloat(f32);
@@ -182,9 +181,9 @@ impl ProbeResult {
                 (Color::White, 1.0)
             }
         } else {
-            let mean = self.white as f64 + self.komi as f64 - self.black as f64;
-            let std = 2.0 * self.undecided as f64 / 12.0;
-            let black_prob = Normal::new(mean, std).unwrap();
+            let mean = self.white as f32 + self.komi as f32 - self.black as f32;
+            let std = 2.0 * self.undecided as f32 / 12.0;
+            let black_prob = Normal::new(mean, std);
 
             (Color::Black, black_prob.cdf(0.0) as f32)
         }

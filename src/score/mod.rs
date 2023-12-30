@@ -1,3 +1,4 @@
+mod normal;
 mod score;
 mod search_tree;
 
